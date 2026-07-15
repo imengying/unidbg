@@ -15,7 +15,9 @@ concurrency:
 jobs:
   build-release-and-push:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
+      MAVEN_VERSION: 3.9.16
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
@@ -30,21 +32,16 @@ jobs:
           java-version: "25"
           cache: maven
 
-      - name: Set up latest Maven 3
+      - name: Set up Maven 3.9.16
         shell: bash
         run: |
           set -euo pipefail
 
-          MAVEN_VERSION="$(
-            python3 -c "import urllib.request, xml.etree.ElementTree as ET; root = ET.fromstring(urllib.request.urlopen('https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/maven-metadata.xml').read()); versions = [tuple(int(part) for part in text.split('.')) for node in root.findall('./versioning/versions/version') for text in [(node.text or '').strip()] if text.startswith('3.') and len(text.split('.')) == 3 and all(part.isdigit() for part in text.split('.'))]; print('.'.join(str(part) for part in max(versions))) if versions else (_ for _ in ()).throw(SystemExit('No stable Maven 3 release found'))"
-          )"
-
           ARCHIVE="apache-maven-${MAVEN_VERSION}-bin.tar.gz"
-          BASE_URL="https://dlcdn.apache.org/maven/maven-3/${MAVEN_VERSION}/binaries"
-          CHECKSUM_URL="https://downloads.apache.org/maven/maven-3/${MAVEN_VERSION}/binaries/${ARCHIVE}.sha512"
+          BASE_URL="https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/${MAVEN_VERSION}"
 
           curl -fsSL "${BASE_URL}/${ARCHIVE}" -o "${RUNNER_TEMP}/${ARCHIVE}"
-          curl -fsSL "${CHECKSUM_URL}" -o "${RUNNER_TEMP}/${ARCHIVE}.sha512"
+          curl -fsSL "${BASE_URL}/${ARCHIVE}.sha512" -o "${RUNNER_TEMP}/${ARCHIVE}.sha512"
 
           echo "$(tr -d '[:space:]' < "${RUNNER_TEMP}/${ARCHIVE}.sha512")  ${RUNNER_TEMP}/${ARCHIVE}" | sha512sum -c -
 
@@ -54,15 +51,14 @@ jobs:
       - name: Verify Maven version
         run: mvn -version
 
-      - name: Build jar (Maven)
-        run: mvn -DskipTests package
+      - name: Build and verify jar
+        run: mvn --batch-mode --no-transfer-progress clean verify -Dmaven.test.skip=false
 
       - name: Generate checksums
-        run: |
-          sha256sum target/fqnovel.jar > target/fqnovel.jar.sha256
+        working-directory: target
+        run: sha256sum fqnovel.jar > fqnovel.jar.sha256
 
       - name: Create GitHub Release
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -81,15 +77,15 @@ jobs:
               --title "${TAG_NAME}"
           fi
 
-      - name: Set up Docker Buildx
-        if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
-        uses: docker/setup-buildx-action@v4.0.0
-
       - name: Set up QEMU
         if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
         uses: docker/setup-qemu-action@v4.0.0
         with:
           platforms: arm64
+
+      - name: Set up Docker Buildx
+        if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
+        uses: docker/setup-buildx-action@v4.0.0
 
       - name: Login to Docker Hub
         if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}

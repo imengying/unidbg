@@ -1,7 +1,7 @@
 package com.mengying.fqnovel.utils;
 
 import com.mengying.fqnovel.dto.FQSearchResponse;
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -104,7 +104,7 @@ public final class FQSearchResponseParser {
         if (node == null) {
             return "";
         }
-        return node.path(fieldName).asText("");
+        return node.path(fieldName).asString("");
     }
 
     private static JsonNode dataNodeOf(JsonNode root) {
@@ -194,19 +194,19 @@ public final class FQSearchResponseParser {
             return book;
         }
 
-        book.setBookId(bookNode.path("book_id").asText(""));
-        book.setBookName(bookNode.path("book_name").asText(""));
-        book.setAuthor(bookNode.path("author").asText(""));
+        book.setBookId(bookNode.path("book_id").asString(""));
+        book.setBookName(bookNode.path("book_name").asString(""));
+        book.setAuthor(bookNode.path("author").asString(""));
         book.setDescription(Texts.firstNonBlank(
-            bookNode.path("abstract").asText(""),
-            bookNode.path("book_abstract_v2").asText("")
+            bookNode.path("abstract").asString(""),
+            bookNode.path("book_abstract_v2").asString("")
         ));
         book.setCoverUrl(Texts.firstNonBlank(
-            bookNode.path("thumb_url").asText(""),
-            bookNode.path("detail_page_thumb_url").asText("")
+            bookNode.path("thumb_url").asString(""),
+            bookNode.path("detail_page_thumb_url").asString("")
         ));
-        book.setLastChapterTitle(bookNode.path("last_chapter_title").asText(""));
-        book.setCategory(bookNode.path("category").asText(""));
+        book.setLastChapterTitle(bookNode.path("last_chapter_title").asString(""));
+        book.setCategory(bookNode.path("category").asString(""));
         book.setWordCount(bookNode.path("word_number").asLong(0L));
 
         return book;
@@ -235,12 +235,11 @@ public final class FQSearchResponseParser {
                 if (Texts.hasText(found)) {
                     return found;
                 }
-                node.fieldNames().forEachRemaining(name -> {
-                    JsonNode child = node.get(name);
+                for (JsonNode child : node) {
                     if (child != null) {
                         stack.push(child);
                     }
-                });
+                }
             } else if (node.isArray()) {
                 for (JsonNode child : node) {
                     stack.push(child);
@@ -261,7 +260,7 @@ public final class FQSearchResponseParser {
         if (node.isNumber()) {
             return node.intValue() != 0;
         }
-        String s = Texts.trimToNull(node.asText(""));
+        String s = Texts.trimToNull(node.asString(""));
         if (s == null || "null".equalsIgnoreCase(s)) {
             return null;
         }

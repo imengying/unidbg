@@ -9,8 +9,8 @@ import com.mengying.fqnovel.utils.FQApiUtils;
 import com.mengying.fqnovel.utils.FQDirectoryResponseTransformer;
 import com.mengying.fqnovel.utils.LocalCacheFactory;
 import com.mengying.fqnovel.utils.Texts;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -112,18 +112,18 @@ public class FQDirectoryService {
                 return FQNovelResponse.error("签名生成失败");
             }
 
-            String responseBody = upstream.responseBody();
+            String responseSnippet = upstream.responseSnippet();
             JsonNode rootNode = upstream.jsonBody();
             Integer upstreamCode = UpstreamSignedRequestService.nonZeroUpstreamCode(rootNode);
             if (upstreamCode != null) {
                 String upstreamMessage = UpstreamSignedRequestService.upstreamMessageOrDefault(rootNode, "upstream error");
-                UpstreamSignedRequestService.logUpstreamBodyDebug(log, "目录接口上游失败原始响应", responseBody);
+                UpstreamSignedRequestService.logUpstreamBodyDebug(log, "目录接口上游失败原始响应", responseSnippet);
                 return FQNovelResponse.error(upstreamCode, upstreamMessage);
             }
 
             JsonNode dataNode = rootNode.path("data");
             if (dataNode.isMissingNode() || dataNode.isNull()) {
-                UpstreamSignedRequestService.logUpstreamBodyDebug(log, "目录接口上游缺少data原始响应", responseBody);
+                UpstreamSignedRequestService.logUpstreamBodyDebug(log, "目录接口上游缺少data原始响应", responseSnippet);
                 return directoryFailure(UpstreamSignedRequestService.upstreamMessageOrDefault(rootNode, "upstream response missing data"));
             }
 

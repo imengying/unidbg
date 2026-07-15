@@ -5,8 +5,8 @@ import com.mengying.fqnovel.unidbg.IdleFQ;
 import com.mengying.fqnovel.utils.ProcessLifecycle;
 import com.mengying.fqnovel.utils.TempFileUtils;
 import com.mengying.fqnovel.utils.Texts;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

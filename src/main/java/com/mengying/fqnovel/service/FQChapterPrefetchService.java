@@ -41,6 +41,9 @@ public class FQChapterPrefetchService {
 
     private static final int MIN_DIRECTORY_CACHE_MAX_ENTRIES = 64;
     private static final int MAX_CHAPTER_PREFETCH_SIZE = 30;
+    private static final long CHAPTER_BASE_WEIGHT_BYTES = 256L;
+    private static final long STRING_BASE_WEIGHT_BYTES = 40L;
+    private static final int UTF16_BYTES_PER_CHAR = 2;
 
     private static final String EX_PREFIX_ILLEGAL_ARGUMENT = "java.lang.IllegalArgumentException:";
     private static final String EX_PREFIX_ILLEGAL_STATE = "java.lang.IllegalStateException:";
@@ -88,19 +91,56 @@ public class FQChapterPrefetchService {
 
     @PostConstruct
     public void initCaches() {
-        int chapterMax = Math.max(1, downloadProperties.getCache().getChapterMaxEntries());
+        long chapterMaxWeight = Math.max(1L, downloadProperties.getCache().getChapterMaxWeightBytes());
+        int chapterAuxiliaryMax = Math.max(1, downloadProperties.getCache().getChapterMaxEntries());
         long chapterTtl = downloadProperties.getCache().getChapterTtlMs();
         long chapterNegativeTtl = Math.max(0L, downloadProperties.getCache().getChapterNegativeTtlMs());
         long chapterFailureLogCooldown = Math.max(0L, downloadProperties.getCache().getChapterFailureLogCooldownMs());
         long chapterEmptyRetryBackoff = Math.max(0L, downloadProperties.getCache().getChapterEmptyRetryBackoffMs());
-        int dirMax = Math.max(MIN_DIRECTORY_CACHE_MAX_ENTRIES, chapterMax / 10);
+        int dirMax = Math.max(
+            MIN_DIRECTORY_CACHE_MAX_ENTRIES,
+            downloadProperties.getCache().getApiDirectoryMaxEntries()
+        );
         long dirTtl = downloadProperties.getCache().getApiDirectoryTtlMs();
 
-        this.chapterCache = LocalCacheFactory.build(chapterMax, chapterTtl);
-        this.chapterNegativeCache = chapterNegativeTtl > 0 ? LocalCacheFactory.build(chapterMax, chapterNegativeTtl) : null;
-        this.chapterRetryBackoffCache = chapterEmptyRetryBackoff > 0 ? LocalCacheFactory.build(chapterMax, chapterEmptyRetryBackoff) : null;
+        this.chapterCache = LocalCacheFactory.buildWeighted(
+            chapterMaxWeight,
+            chapterTtl,
+            FQChapterPrefetchService::estimateChapterWeight
+        );
+        this.chapterNegativeCache = chapterNegativeTtl > 0
+            ? LocalCacheFactory.build(chapterAuxiliaryMax, chapterNegativeTtl)
+            : null;
+        this.chapterRetryBackoffCache = chapterEmptyRetryBackoff > 0
+            ? LocalCacheFactory.build(chapterAuxiliaryMax, chapterEmptyRetryBackoff)
+            : null;
         this.directoryCache = LocalCacheFactory.build(dirMax, dirTtl);
         this.chapterFailureThrottledLog = new ThrottledLogger(chapterFailureLogCooldown);
+    }
+
+    private static int estimateChapterWeight(String cacheKey, FQNovelChapterInfo chapterInfo) {
+        if (chapterInfo == null) {
+            return 1;
+        }
+
+        long weight = CHAPTER_BASE_WEIGHT_BYTES
+            + estimateStringWeight(cacheKey)
+            + estimateStringWeight(chapterInfo.getChapterId())
+            + estimateStringWeight(chapterInfo.getBookId())
+            + estimateStringWeight(chapterInfo.getAuthorName())
+            + estimateStringWeight(chapterInfo.getTitle())
+            + estimateStringWeight(chapterInfo.getRawContent())
+            + estimateStringWeight(chapterInfo.getPrevChapterId())
+            + estimateStringWeight(chapterInfo.getNextChapterId())
+            + estimateStringWeight(chapterInfo.getTxtContent());
+        return (int) Math.min(Integer.MAX_VALUE, Math.max(1L, weight));
+    }
+
+    private static long estimateStringWeight(String value) {
+        if (value == null) {
+            return 0L;
+        }
+        return STRING_BASE_WEIGHT_BYTES + (long) value.length() * UTF16_BYTES_PER_CHAR;
     }
 
     public CompletableFuture<FQNovelResponse<FQNovelChapterInfo>> getChapterContent(FQNovelRequest request) {
@@ -169,7 +209,10 @@ public class FQChapterPrefetchService {
                     }
                     try {
                         FQNovelChapterInfo info = chapterContentBuilder.buildChapterInfo(bookId, chapterId, itemContent);
-                        cacheChapter(bookId, chapterId, info);
+                        if (!cacheChapter(bookId, chapterId, info)) {
+                            throw new IllegalArgumentException("章节内容为空/过短");
+                        }
+                        autoRestartService.recordSuccess();
                         return FQNovelResponse.success(info);
                     } catch (Exception e) {
                         throw new RuntimeException(e);
@@ -277,7 +320,7 @@ public class FQChapterPrefetchService {
         if (chapterIndex < 0 || batchSize <= 0) {
             return 0;
         }
-        return (chapterIndex / batchSize) * batchSize;
+        return chapterIndex / batchSize * batchSize;
     }
 
     private CompletableFuture<Void> doPrefetchAndCacheAsync(String bookId, String chapterId) {
@@ -300,6 +343,7 @@ public class FQChapterPrefetchService {
 
                 Map<String, ItemContent> dataMap = batch.data().data();
                 String firstBatchRiskReason = null;
+                boolean targetChapterValid = false;
                 for (String itemId : batchIds) {
                     ItemContent content = dataMap.get(itemId);
                     if (content == null) {
@@ -307,7 +351,12 @@ public class FQChapterPrefetchService {
                     }
                     try {
                         FQNovelChapterInfo info = chapterContentBuilder.buildChapterInfo(bookId, itemId, content);
-                        cacheChapter(bookId, itemId, info);
+                        if (!cacheChapter(bookId, itemId, info)) {
+                            throw new IllegalArgumentException("章节内容为空/过短");
+                        }
+                        if (chapterId.equals(itemId)) {
+                            targetChapterValid = true;
+                        }
                     } catch (Exception e) {
                         String normalizedReason = recordChapterFailure(bookId, itemId, e.getMessage(), false);
                         if (firstBatchRiskReason == null
@@ -319,6 +368,9 @@ public class FQChapterPrefetchService {
                     }
                 }
                 handleChapterRiskSignal(firstBatchRiskReason);
+                if (targetChapterValid) {
+                    autoRestartService.recordSuccess();
+                }
             }, exec);
         });
     }
@@ -432,9 +484,9 @@ public class FQChapterPrefetchService {
         return persisted;
     }
 
-    private void cacheChapter(String bookId, String chapterId, FQNovelChapterInfo chapterInfo) {
+    private boolean cacheChapter(String bookId, String chapterId, FQNovelChapterInfo chapterInfo) {
         if (!FQNovelChapterInfo.normalizeAndValidateForCache(bookId, chapterId, chapterInfo)) {
-            return;
+            return false;
         }
 
         chapterCache.put(cacheKey(bookId, chapterId), chapterInfo);
@@ -445,6 +497,7 @@ public class FQChapterPrefetchService {
         if (pgCacheService != null) {
             pgCacheService.saveChapterIfValid(bookId, chapterId, chapterInfo);
         }
+        return true;
     }
 
     private static String cacheKey(String bookId, String chapterId) {

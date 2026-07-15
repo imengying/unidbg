@@ -5,11 +5,14 @@ server:
 spring:
   main:
     banner-mode: "off"
+    log-startup-info: false
   application:
     name: unidbg-boot-server
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 0
   mvc:
     throw-exception-if-no-handler-found: true
-  webmvc:
     async:
       request-timeout: 300s
   threads:
@@ -42,6 +45,7 @@ fq:
       executor-queue-capacity: 256
       executor-keep-alive-seconds: 60
     cache:
+      chapter-max-weight-bytes: 67108864
       chapter-max-entries: 2000
       chapter-ttl-ms: 600000
       chapter-negative-ttl-ms: 600000

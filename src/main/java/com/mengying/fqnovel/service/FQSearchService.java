@@ -14,11 +14,10 @@ import com.mengying.fqnovel.utils.LocalCacheFactory;
 import com.mengying.fqnovel.utils.RetryBackoff;
 import com.mengying.fqnovel.utils.Texts;
 import com.github.benmanes.caffeine.cache.Cache;
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
@@ -206,18 +205,17 @@ public class FQSearchService {
             firstRequest.setLastSearchPageInterval(FQConstants.Search.PHASE1_LAST_SEARCH_PAGE_INTERVAL);
             FQNovelResponse<FQSearchResponse> firstResponse = performSearchInternal(firstRequest);
             if (!RequestCacheHelper.isResponseSuccess(firstResponse)
-                && UpstreamSignedRequestService.isLikelyRiskControl(firstResponse != null ? firstResponse.message() : null)
+                && UpstreamSignedRequestService.isLikelyRiskControl(firstResponse.message())
                 && deviceRotationService.rotateIfNeeded(REASON_SEARCH_PHASE1_FAIL)) {
                 firstResponse = performSearchInternal(firstRequest);
             }
             if (!RequestCacheHelper.isResponseSuccess(firstResponse)) {
                 if (throttledLog.shouldLog("search.phase1.fail")) {
                     log.warn("第一阶段搜索失败 - code: {}, message: {}",
-                        firstResponse != null ? firstResponse.code() : null,
-                        firstResponse != null ? firstResponse.message() : null);
+                        firstResponse.code(), firstResponse.message());
                 }
                 autoRestartService.recordFailure(REASON_SEARCH_PHASE1_FAIL);
-                return SearchContinuation.done(firstResponse != null ? firstResponse : FQNovelResponse.error("第一阶段搜索失败"));
+                return SearchContinuation.done(firstResponse);
             }
 
             String searchId = extractSearchId(firstResponse);
@@ -304,14 +302,13 @@ public class FQSearchService {
         secondRequest.setLastSearchPageInterval(lastSearchPageInterval);
 
         FQNovelResponse<FQSearchResponse> secondResponse = performSearchInternal(secondRequest);
-        if (secondResponse != null
-            && secondResponse.code() != null
+        if (secondResponse.code() != null
             && secondResponse.code() == 0
             && secondResponse.data() != null) {
             secondResponse.data().setSearchId(searchId);
         }
         recordSearchOutcome(secondResponse, REASON_SEARCH_PHASE2_FAIL);
-        return secondResponse != null ? secondResponse : FQNovelResponse.error("第二阶段搜索失败: 空响应");
+        return secondResponse;
     }
 
     private record SearchContinuation(
@@ -356,8 +353,7 @@ public class FQSearchService {
                 return signerFailResponse();
             }
 
-            ResponseEntity<byte[]> response = upstream.response();
-            String responseBody = upstream.responseBody();
+            String responseSnippet = upstream.responseSnippet();
             JsonNode jsonResponse = upstream.jsonBody();
 
             Integer upstreamCode = UpstreamSignedRequestService.nonZeroUpstreamCode(jsonResponse);
@@ -370,7 +366,7 @@ public class FQSearchService {
             int tabType = intOrDefault(searchRequest.getTabType(), 1);
             FQSearchResponse searchResponse = FQSearchResponseParser.parseSearchResponse(jsonResponse, tabType);
             if (searchResponse == null) {
-                UpstreamSignedRequestService.logUpstreamBodyDebug(log, "搜索接口解析失败原始响应", responseBody);
+                UpstreamSignedRequestService.logUpstreamBodyDebug(log, "搜索接口解析失败原始响应", responseSnippet);
                 return FQNovelResponse.error("搜索响应解析失败");
             }
 
@@ -380,23 +376,17 @@ public class FQSearchService {
                     searchResponse.setSearchId(fromBody);
                 }
                 if (Texts.isBlank(searchResponse.getSearchId())) {
-                    String fromHeader = response == null ? "" : Texts.firstNonBlank(
-                        response.getHeaders().getFirst("search_id"),
-                        response.getHeaders().getFirst("search-id"),
-                        response.getHeaders().getFirst("x-search-id"),
-                        response.getHeaders().getFirst("x-fq-search-id")
-                    );
+                    String fromHeader = upstream.searchIdHeader();
                     if (Texts.hasText(fromHeader)) {
                         searchResponse.setSearchId(fromHeader);
                     }
                 }
             }
-            if (searchRequest != null
-                && Boolean.TRUE.equals(searchRequest.getIsFirstEnterSearch())
+            if (Boolean.TRUE.equals(searchRequest.getIsFirstEnterSearch())
                 && Texts.isBlank(searchResponse.getSearchId())
                 && log.isDebugEnabled()) {
                 log.debug("第一阶段搜索未返回search_id，原始响应: {}",
-                    Texts.truncate(responseBody, SEARCH_ID_DEBUG_SNIPPET_LENGTH));
+                    Texts.truncate(responseSnippet, SEARCH_ID_DEBUG_SNIPPET_LENGTH));
             }
 
             return FQNovelResponse.success(searchResponse);

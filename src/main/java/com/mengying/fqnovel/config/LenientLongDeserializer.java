@@ -1,17 +1,16 @@
 package com.mengying.fqnovel.config;
 
 import com.mengying.fqnovel.utils.Texts;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonToken;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JsonDeserializer;
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.JsonParser;
+import tools.jackson.core.JsonToken;
+import tools.jackson.databind.DeserializationContext;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ValueDeserializer;
 
-import java.io.IOException;
-
-public class LenientLongDeserializer extends JsonDeserializer<Long> {
+public class LenientLongDeserializer extends ValueDeserializer<Long> {
     @Override
-    public Long deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+    public Long deserialize(JsonParser p, DeserializationContext ctxt) throws JacksonException {
         JsonToken token = p.currentToken();
         if (token == null) {
             token = p.nextToken();
@@ -58,8 +57,8 @@ public class LenientLongDeserializer extends JsonDeserializer<Long> {
         if (node.isBoolean()) {
             return node.booleanValue() ? 1L : 0L;
         }
-        if (node.isTextual()) {
-            String s = Texts.trimToNull(node.asText(""));
+        if (node.isString()) {
+            String s = Texts.trimToNull(node.asString(""));
             if (s == null || "null".equalsIgnoreCase(s)) return null;
             try {
                 return Long.parseLong(s);

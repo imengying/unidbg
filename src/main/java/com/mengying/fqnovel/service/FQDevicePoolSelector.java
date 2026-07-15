@@ -104,7 +104,7 @@ public class FQDevicePoolSelector {
         for (int i = 0; i < pool.size(); i++) {
             FQApiProperties.DeviceProfile profile = pool.get(i);
             String normalizedProfileName = Texts.trimToNull(profileName(profile));
-            if (normalizedProfileName != null && name.equals(normalizedProfileName)) {
+            if (name.equals(normalizedProfileName)) {
                 return i;
             }
         }

@@ -3,20 +3,19 @@ package com.mengying.fqnovel.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
 
 @Configuration
-public class RestTemplateConfig {
+public class RestClientConfig {
 
     @Bean
-    public RestTemplate restTemplate(FQDownloadProperties downloadProperties) {
+    public RestClient restClient(RestClient.Builder builder, FQDownloadProperties downloadProperties) {
         Duration connectTimeout = safeTimeout(downloadProperties.getUpstream().getConnectTimeoutMs(), Duration.ofSeconds(8));
         Duration readTimeout = safeTimeout(downloadProperties.getUpstream().getReadTimeoutMs(), Duration.ofSeconds(15));
 
-        // 使用 JDK HttpClient，请求连接可复用，避免高频章节请求下频繁建连。
         HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(connectTimeout)
             .version(HttpClient.Version.HTTP_1_1)
@@ -25,10 +24,10 @@ public class RestTemplateConfig {
 
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
         factory.setReadTimeout(readTimeout);
-        return new RestTemplate(factory);
+        return builder.requestFactory(factory).build();
     }
 
-    private Duration safeTimeout(long valueMs, Duration defaultValue) {
+    private static Duration safeTimeout(long valueMs, Duration defaultValue) {
         if (valueMs <= 0) {
             return defaultValue;
         }
@@ -37,5 +36,4 @@ public class RestTemplateConfig {
         }
         return Duration.ofMillis(valueMs);
     }
-
 }

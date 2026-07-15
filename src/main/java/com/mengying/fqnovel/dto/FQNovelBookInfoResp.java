@@ -4,7 +4,7 @@ import com.mengying.fqnovel.config.LenientIntegerDeserializer;
 import com.mengying.fqnovel.config.LenientLongDeserializer;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
 /**
  * 目录接口中的书籍信息（仅保留当前映射需要字段）。

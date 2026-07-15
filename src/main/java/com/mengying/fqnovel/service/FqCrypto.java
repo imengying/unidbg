@@ -26,6 +26,7 @@ public class FqCrypto {
     public static final String REG_KEY = "ac25c67ddd8f38c1b37a2348828e222e";
 
     private static final ConcurrentHashMap<String, FqCrypto> INSTANCE_CACHE = new ConcurrentHashMap<>();
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     
     private final SecretKeySpec secretKey;
     
@@ -110,7 +111,7 @@ public class FqCrypto {
         
         // 生成随机IV
         byte[] iv = new byte[16];
-        new SecureRandom().nextBytes(iv);
+        SECURE_RANDOM.nextBytes(iv);
         
         // 加密数据
         byte[] encryptedData = encrypt(combinedBytes, iv);

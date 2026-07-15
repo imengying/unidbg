@@ -6,8 +6,8 @@ import com.mengying.fqnovel.dto.FqRegisterKeyPayloadResponse;
 import com.mengying.fqnovel.dto.FqRegisterKeyResponse;
 import com.mengying.fqnovel.utils.FQApiUtils;
 import com.mengying.fqnovel.utils.Texts;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -182,9 +182,9 @@ public class FQRegisterKeyService {
             throw new IllegalStateException("签名生成失败，无法请求 registerkey");
         }
 
-        String responseBody = upstream.responseBody();
+        String responseSnippet = upstream.responseSnippet();
         if (log.isDebugEnabled()) {
-            log.debug("registerkey原始响应: {}", Texts.truncate(Texts.nullToEmpty(responseBody), 800));
+            log.debug("registerkey原始响应: {}", Texts.nullToEmpty(responseSnippet));
         }
 
         JsonNode root = upstream.jsonBody();

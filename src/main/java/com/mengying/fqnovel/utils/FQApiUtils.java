@@ -165,10 +165,6 @@ public class FQApiUtils {
         return ordered;
     }
 
-    public Map<String, String> buildRegisterKeyHeaders() {
-        return buildRegisterKeyHeaders(System.currentTimeMillis());
-    }
-
     /**
      * 构建 RegisterKey 请求头（指定时间戳）。
      */
@@ -210,25 +206,34 @@ public class FQApiUtils {
     }
 
     /**
-     * 对参数值进行编码（已编码过的不再编码）。
+     * 对原始值或已百分号编码的值进行规范化编码。
+     * '+' 始终按字面量处理，避免 C++ 之类的查询被上游解析为空格。
      */
     private String encodeIfNeeded(String value) {
         if (value == null) {
             return "";
         }
-        try {
-            String decoded = URLDecoder.decode(value, StandardCharsets.UTF_8);
-            if (!decoded.equals(value)) {
-                return value;
+
+        String normalized = value;
+        if (containsPercentEncodedByte(value)) {
+            try {
+                normalized = URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8);
+            } catch (IllegalArgumentException ignored) {
+                normalized = value;
             }
-        } catch (IllegalArgumentException ignored) {
-            // ignore
         }
-        try {
-            return URLEncoder.encode(value, StandardCharsets.UTF_8);
-        } catch (Exception ex) {
-            return value;
+        return URLEncoder.encode(normalized, StandardCharsets.UTF_8);
+    }
+
+    private static boolean containsPercentEncodedByte(String value) {
+        for (int i = 0; i + 2 < value.length(); i++) {
+            if (value.charAt(i) == '%'
+                && Character.digit(value.charAt(i + 1), 16) >= 0
+                && Character.digit(value.charAt(i + 2), 16) >= 0) {
+                return true;
+            }
         }
+        return false;
     }
 
     public Map<String, String> buildSearchParams(FQSearchUpstreamRequest searchRequest) {
@@ -297,9 +302,8 @@ public class FQApiUtils {
         Boolean needVersion = directoryRequest.getNeedVersion();
         boolean minimalResponse = Boolean.TRUE.equals(directoryRequest.getMinimalResponse());
         String bookId = directoryRequest.getBookId();
-        boolean finalNeedVersion = minimalResponse
-            ? false
-            : Objects.requireNonNullElse(needVersion, Boolean.TRUE);
+        boolean finalNeedVersion = !minimalResponse
+            && Objects.requireNonNullElse(needVersion, Boolean.TRUE);
 
         params.put("book_type", String.valueOf(intOrDefault(bookType, 0)));
         params.put("book_id", Texts.nullToEmpty(bookId));

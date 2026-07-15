@@ -4,19 +4,15 @@ import com.mengying.fqnovel.utils.ConsoleNoiseFilter;
 import com.mengying.fqnovel.utils.Texts;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.Banner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.core.env.Environment;
 
 import java.net.InetAddress;
 
 @ConfigurationPropertiesScan
-@EnableConfigurationProperties
 @SpringBootApplication(
-    scanBasePackages = {"com.mengying"},
     excludeName = {
         "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration",
         "org.springframework.boot.webmvc.autoconfigure.error.ErrorMvcAutoConfiguration"
@@ -32,10 +28,7 @@ public class UnidbgServerApplication {
     public static void main(String[] args) {
         ConsoleNoiseFilter.install();
         preferLocalConfigIfPresent();
-        SpringApplication app = new SpringApplication(UnidbgServerApplication.class);
-        app.setBannerMode(Banner.Mode.OFF);
-        app.setLogStartupInfo(false);
-        Environment env = app.run(args).getEnvironment();
+        Environment env = SpringApplication.run(UnidbgServerApplication.class, args).getEnvironment();
         logApplicationStartup(env);
     }
 
@@ -74,7 +67,7 @@ public class UnidbgServerApplication {
         if (hasLocalConfig) {
             // 若本地存在配置文件：允许 file:./ 覆盖 classpath
             System.setProperty("spring.config.location",
-                "optional:file:./,optional:classpath:/");
+                "optional:classpath:/,optional:file:./");
         } else {
             // 本地没有配置文件：只读 classpath，避免扫描工作目录带来的不确定性
             System.setProperty("spring.config.location", "optional:classpath:/");

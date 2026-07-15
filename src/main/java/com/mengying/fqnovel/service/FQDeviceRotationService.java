@@ -1,6 +1,6 @@
 package com.mengying.fqnovel.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import com.mengying.fqnovel.config.FQApiProperties;
 import com.mengying.fqnovel.config.FQApiRuntimeProfileManager;
 import com.mengying.fqnovel.dto.FQSearchRequest;
@@ -165,7 +165,7 @@ public class FQDeviceRotationService {
                 return false;
             }
 
-            String body = upstream.responseBody();
+            String body = upstream.responseSnippet();
             String trimmedBody = Texts.trimToNull(body);
             if (trimmedBody == null || trimmedBody.startsWith("<")) {
                 return false;

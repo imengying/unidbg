@@ -167,6 +167,7 @@ public class FQDownloadProperties {
     }
 
     public static class Cache {
+        private long chapterMaxWeightBytes = 64L * 1024 * 1024;
         private int chapterMaxEntries = 2000;
         private long chapterTtlMs = 30 * 60 * 1000L;
         private long chapterNegativeTtlMs = 10 * 60 * 1000L;
@@ -177,6 +178,14 @@ public class FQDownloadProperties {
         private long searchTtlMs = 45 * 1000L;
         private int apiDirectoryMaxEntries = 512;
         private long apiDirectoryTtlMs = 10 * 60 * 1000L;
+
+        public long getChapterMaxWeightBytes() {
+            return chapterMaxWeightBytes;
+        }
+
+        public void setChapterMaxWeightBytes(long chapterMaxWeightBytes) {
+            this.chapterMaxWeightBytes = chapterMaxWeightBytes;
+        }
 
         public int getChapterMaxEntries() {
             return chapterMaxEntries;

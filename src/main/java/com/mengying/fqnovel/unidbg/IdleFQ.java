@@ -287,44 +287,6 @@ public class IdleFQ extends AbstractJni implements IOResolver<AndroidFileIO> {
         }
     }
 
-    /**
-     * 重载方法：使用Map格式的header参数
-     *
-     * @param url       API请求的URL
-     * @param headerMap HTTP请求头的Map，key为header名称，value为header值
-     * @return 生成的签名字符串，失败时返回null
-     */
-    public String generateSignature(String url, Map<String, String> headerMap) {
-        if (headerMap == null || headerMap.isEmpty()) {
-            return generateSignature(url, "");
-        }
-
-        // 将Map转换为\r\n分隔的字符串格式
-        StringBuilder headerBuilder = new StringBuilder();
-        for (Map.Entry<String, String> entry : headerMap.entrySet()) {
-            headerBuilder.append(entry.getKey()).append("\r\n")
-                .append(entry.getValue()).append("\r\n");
-        }
-
-        // 移除最后的\r\n
-        String header = headerBuilder.toString();
-        if (header.endsWith("\r\n")) {
-            header = header.substring(0, header.length() - 2);
-        }
-
-        return generateSignature(url, header);
-    }
-
-    /**
-     * 简化的签名生成方法，只传入URL
-     *
-     * @param url API请求的URL
-     * @return 生成的签名字符串，失败时返回null
-     */
-    public String generateSignature(String url) {
-        return generateSignature(url, "");
-    }
-
     // 环境补充相关方法
     @Override
     public DvmObject<?> callStaticObjectMethodV(BaseVM vm, DvmClass dvmClass, String signature, VaList vaList) {

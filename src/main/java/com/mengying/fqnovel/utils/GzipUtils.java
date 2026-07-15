@@ -1,13 +1,11 @@
 package com.mengying.fqnovel.utils;
 
-import org.springframework.http.ResponseEntity;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Locale;
 import java.util.zip.GZIPInputStream;
+import java.util.zip.ZipException;
 
 /**
  * GZIP 压缩/解压缩工具类
@@ -32,7 +30,7 @@ public final class GzipUtils {
         return utf8(data);
     }
 
-    private static String ungzip(byte[] gzipData) throws Exception {
+    private static String ungzip(byte[] gzipData) throws IOException {
         try (GZIPInputStream gzipInputStream = new GZIPInputStream(new ByteArrayInputStream(gzipData))) {
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
             byte[] buffer = new byte[1024];
@@ -44,74 +42,39 @@ public final class GzipUtils {
         }
     }
 
-    private static boolean hasGzipContentEncoding(List<String> encodings) {
-        if (encodings == null) {
-            return false;
-        }
-        for (String encoding : encodings) {
-            if (encoding != null && encoding.toLowerCase(Locale.ROOT).contains("gzip")) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     /**
      * 解压缩 GZIP 响应体（基础方法）
      *
-     * @param gzipData 可能是 GZIP 压缩的字节数组
+     * @param gzipData 应为 GZIP 压缩的字节数组
      * @return 解压后的字符串
-     * @throws Exception 解压失败时抛出异常
+     * @throws IOException 数据不是有效 GZIP 或解压失败
      */
-    public static String decompressGzipResponse(byte[] gzipData) throws Exception {
+    public static String decompressGzipResponse(byte[] gzipData) throws IOException {
         if (gzipData == null || gzipData.length == 0) {
             return "";
         }
 
-        // Some upstream responses are not gzip (or already decompressed).
-        boolean looksLikeGzip = hasGzipMagic(gzipData);
-        if (!looksLikeGzip) {
-            return decodeRawBody(gzipData);
+        if (!hasGzipMagic(gzipData)) {
+            throw new ZipException("Not in GZIP format");
         }
-
-        try {
-            return ungzip(gzipData);
-        } catch (java.util.zip.ZipException e) {
-            // Fallback: not gzip (or already decompressed).
-            return decodeRawBody(gzipData);
-        }
+        return ungzip(gzipData);
     }
 
     /**
      * 统一解码上游响应（自动处理 GZIP 压缩）
-     * 根据 Content-Encoding 头部和魔数自动判断是否需要解压
+     * 根据 GZIP 魔数判断是否需要解压。HTTP 客户端已解压或上游误标时按原始文本处理。
      *
-     * @param response HTTP 响应
+     * @param body HTTP 响应体
      * @return 解码后的字符串
      */
-    public static String decodeUpstreamResponse(ResponseEntity<byte[]> response) {
-        if (response == null) {
-            return "";
-        }
-        byte[] body = response.getBody();
+    public static String decodeUpstreamResponse(byte[] body) throws IOException {
         if (body == null || body.length == 0) {
             return "";
         }
 
-        List<String> enc = response.getHeaders().get("Content-Encoding");
-        boolean isGzip = hasGzipContentEncoding(enc) || hasGzipMagic(body);
-
-        if (!isGzip) {
+        if (!hasGzipMagic(body)) {
             return decodeRawBody(body);
         }
-
-        try {
-            return ungzip(body);
-        } catch (java.util.zip.ZipException e) {
-            // 上游偶尔会返回非 gzip 内容但误标为 gzip，兜底为原始文本
-            return decodeRawBody(body);
-        } catch (Exception e) {
-            return decodeRawBody(body);
-        }
+        return ungzip(body);
     }
 }

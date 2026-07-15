@@ -2,15 +2,14 @@ package com.mengying.fqnovel.service;
 
 import com.mengying.fqnovel.utils.GzipUtils;
 import com.mengying.fqnovel.utils.Texts;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
-import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
 import java.net.URI;
 import java.util.Locale;
@@ -36,21 +35,22 @@ public class UpstreamSignedRequestService {
     private static final String EX_GZIP_NOT_IN_FORMAT = "Not in GZIP format";
     private static final String EX_JACKSON_EMPTY_CONTENT = "No content to map due to end-of-input";
     private static final String EX_SIGNER_FAIL = "签名生成失败";
+    private static final int RESPONSE_SNIPPET_MAX_LENGTH = 800;
 
     private final FQEncryptServiceWorker fqEncryptServiceWorker;
     private final UpstreamRateLimiter upstreamRateLimiter;
-    private final RestTemplate restTemplate;
+    private final RestClient restClient;
     private final ObjectMapper objectMapper;
 
     public UpstreamSignedRequestService(
         FQEncryptServiceWorker fqEncryptServiceWorker,
         UpstreamRateLimiter upstreamRateLimiter,
-        RestTemplate restTemplate,
+        RestClient restClient,
         ObjectMapper objectMapper
     ) {
         this.fqEncryptServiceWorker = fqEncryptServiceWorker;
         this.upstreamRateLimiter = upstreamRateLimiter;
-        this.restTemplate = restTemplate;
+        this.restClient = restClient;
         this.objectMapper = objectMapper;
     }
 
@@ -89,7 +89,7 @@ public class UpstreamSignedRequestService {
      */
     public static String upstreamMessageOrDefault(JsonNode rootNode, String defaultValue) {
         return rootNode != null && rootNode.has("message")
-            ? Texts.defaultIfBlank(rootNode.get("message").asText(), defaultValue)
+            ? Texts.defaultIfBlank(rootNode.get("message").asString(), defaultValue)
             : defaultValue;
     }
 
@@ -110,8 +110,9 @@ public class UpstreamSignedRequestService {
         if (raw == null) {
             return null;
         }
-        JsonNode jsonBody = objectMapper.readTree(raw.responseBody);
-        return new UpstreamJsonResult(raw.response, raw.responseBody, jsonBody);
+        JsonNode jsonBody = objectMapper.readTree(raw.responseBody());
+        String responseSnippet = Texts.truncate(raw.responseBody(), RESPONSE_SNIPPET_MAX_LENGTH);
+        return new UpstreamJsonResult(raw.searchIdHeader(), responseSnippet, jsonBody);
     }
 
     public UpstreamRawResult executeSignedRawGet(String fullUrl, Map<String, String> headers) throws Exception {
@@ -144,10 +145,13 @@ public class UpstreamSignedRequestService {
         if (rateLimit) {
             upstreamRateLimiter.acquire();
         }
-        HttpEntity<?> entity = buildHttpEntity(body, httpHeaders);
-        ResponseEntity<byte[]> response = restTemplate.exchange(URI.create(fullUrl), method, entity, byte[].class);
-        String responseBody = GzipUtils.decodeUpstreamResponse(response);
-        return new UpstreamRawResult(response, responseBody);
+        RestClient.RequestBodySpec request = restClient.method(method)
+            .uri(URI.create(fullUrl))
+            .headers(target -> target.addAll(httpHeaders));
+        RestClient.RequestHeadersSpec<?> requestToExecute = body == null ? request : request.body(body);
+        ResponseEntity<byte[]> response = requestToExecute.retrieve().toEntity(byte[].class);
+        String responseBody = GzipUtils.decodeUpstreamResponse(response.getBody());
+        return new UpstreamRawResult(extractSearchIdHeader(response.getHeaders()), responseBody);
     }
 
     private static HttpHeaders mergeHttpHeaders(Map<String, String> requestHeaders, Map<String, String> signedHeaders) {
@@ -161,8 +165,16 @@ public class UpstreamSignedRequestService {
         return httpHeaders;
     }
 
-    private static HttpEntity<?> buildHttpEntity(Object body, HttpHeaders httpHeaders) {
-        return body == null ? new HttpEntity<>(httpHeaders) : new HttpEntity<>(body, httpHeaders);
+    private static String extractSearchIdHeader(HttpHeaders headers) {
+        if (headers == null || headers.isEmpty()) {
+            return "";
+        }
+        return Texts.firstNonBlank(
+            headers.getFirst("search_id"),
+            headers.getFirst("search-id"),
+            headers.getFirst("x-search-id"),
+            headers.getFirst("x-fq-search-id")
+        );
     }
 
     public static String resolveRetryReason(String message) {
@@ -204,7 +216,7 @@ public class UpstreamSignedRequestService {
             || normalized.contains("permission");
     }
 
-    public record UpstreamRawResult(ResponseEntity<byte[]> response, String responseBody) {}
+    public record UpstreamRawResult(String searchIdHeader, String responseBody) {}
 
-    public record UpstreamJsonResult(ResponseEntity<byte[]> response, String responseBody, JsonNode jsonBody) {}
+    public record UpstreamJsonResult(String searchIdHeader, String responseSnippet, JsonNode jsonBody) {}
 }

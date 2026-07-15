@@ -3,14 +3,12 @@ package com.mengying.fqnovel.service;
 import com.mengying.fqnovel.dto.FQNovelChapterInfo;
 import com.mengying.fqnovel.config.FQCachePostgresConfig;
 import com.mengying.fqnovel.utils.Texts;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-
-import jakarta.annotation.PostConstruct;
 
 /**
  * PostgreSQL 章节缓存：持久化 bookId/chapterId 对应的章节响应。
@@ -20,20 +18,6 @@ import jakarta.annotation.PostConstruct;
 public class PgChapterCacheService {
 
     private static final Logger log = LoggerFactory.getLogger(PgChapterCacheService.class);
-
-    private static final String CREATE_TABLE_SQL = """
-        CREATE TABLE IF NOT EXISTS chapter (
-            book_id VARCHAR(64) NOT NULL,
-            chapter_id VARCHAR(64) NOT NULL,
-            payload TEXT NOT NULL,
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-            PRIMARY KEY (book_id, chapter_id)
-        )
-        """;
-
-    private static final String CREATE_UPDATED_INDEX_SQL = """
-        CREATE INDEX IF NOT EXISTS chapter_idx ON chapter(updated_at)
-        """;
 
     private static final String SELECT_SQL = """
         SELECT payload FROM chapter WHERE book_id = ? AND chapter_id = ? LIMIT 1
@@ -56,18 +40,6 @@ public class PgChapterCacheService {
     public PgChapterCacheService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
-    }
-
-    @PostConstruct
-    public void initSchema() {
-        try {
-            jdbcTemplate.execute(CREATE_TABLE_SQL);
-            jdbcTemplate.execute(CREATE_UPDATED_INDEX_SQL);
-            log.info("章节缓存表已就绪");
-        } catch (Exception e) {
-            log.error("初始化 PostgreSQL 章节缓存表失败", e);
-            throw e;
-        }
     }
 
     public FQNovelChapterInfo getChapter(String bookId, String chapterId) {
